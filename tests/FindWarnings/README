@@ -1,0 +1,4 @@
+This test exercises the ability for UseLATEX.cmake to make sure that
+important warnings from LaTeX are printed (whereas unimportant are
+suppressed). Each of the documents should compile successfully, but they
+all have a warning that should be reported clearly in the build.

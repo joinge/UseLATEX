@@ -1,0 +1,22 @@
+% -*- latex -*-
+
+\documentclass{article}
+
+\begin{document}
+
+% Make a line that will get a parse error if this file is not configured. This makes sure that the configured file is read first.
+Running tests for @UseLATEX_TEST_NAME@.
+
+Included from CopiedInput:
+\input{CopiedInput}
+
+Included from copied-subdir/CopiedInSubdir:
+\input{CopiedInSubdir}
+
+Included from source dir:
+\input{UncopiedInput}
+
+Included from source subdirectory:
+\input{UncopiedInSubdir}
+
+\end{document}

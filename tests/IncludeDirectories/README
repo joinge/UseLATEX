@@ -1,0 +1,3 @@
+This test makes sure that the INCLUDE_DIRECTORIES option works correctly.
+It tests to make sure that it works against directories that are copied to
+the build directory and those that remain in the source directory.
