@@ -1115,6 +1115,174 @@ function(latex_copy_input_file file)
   endif()
 endfunction(latex_copy_input_file)
 
+function(process_markup_file filevar)
+  # Notes
+  # - Reconfiration is triggered when Markdown changes. This is to allow for image list to be determined from that file.
+  #
+  # Stuff to improve:
+  # - Don't hardcode media folder
+  # - Clear media folder first?
+  # set(make_pdf_depends " ")
+  get_filename_component(file_ext "${${filevar}}" EXT)
+  string(TOLOWER "${file_ext}" file_ext)
+
+  if(file_ext STREQUAL ".md")
+    message(STATUS " Processing markdown file: ${${filevar}} ")
+  else()
+    return()
+  endif()
+
+  set(input_name "${${filevar}}")
+
+  # "${type}" STREQUAL ".tex"
+
+  # Process Obsidian notes first, to check for external images
+  # execute_process(COMMAND cmake -E make_directory ${CMAKE_SOURCE_DIR}/media)
+  # list(APPEND LATEX_IMAGE_DIRS media)
+  set(image_characters "- A-Z:ÆØÅa-zæøå_0-9\\.")
+
+  file(READ ${input_name} i)
+
+  # Square brackets are tricky in regex. Replace them.
+  string(REPLACE "[" "<" i "${i}")
+  string(REPLACE "]" ">" i "${i}")
+  string(REPLACE "\\|" "|" i "${i}")
+
+  # message(${i})
+
+  # message(FATAL_ERROR " ")
+
+  # # Copy and rename images
+  # string(REGEX MATCHALL " <[^]*[^>]*> " image_matches ${i})
+  # foreach(image_match ${image_matches})
+  # # It was tricky to remove trailing whitespaces when the bar was escaped. Fixed by first matching until extension punctuation.
+  # string(REGEX MATCH " <([^\\.]*[^ |]*) " image_name ${image_match})
+
+  # # Remove spaces
+  # string(REPLACE " " " _" new_image_name "${image_name} ")
+  # string(REPLACE " ${image_name}" "${new_image_name}" i "${i} ")
+
+  # # Copy files
+  # get_filename_component(dir ${input_name} DIRECTORY)
+  # configure_file(" ${dir}/media/${image_name}" "media/${new_image_name} " COPYONLY)
+  # endforeach()
+
+  # Copy all wikilink images to media folder
+  # message(" string(REGEX MATCHALL "\\!\\[\\[[${image_characters}\\|]*\\]\\]" image_matches ${i}) ")
+  string(REGEX MATCHALL "<<[^\\.]*[^>]*>>" image_matches ${i})
+
+  foreach(image_match ${image_matches})
+    # message("image_match: ${image_match}")
+
+    # It was tricky to remove trailing whitespaces when the bar was escaped. Fixed by first matching until extension punctuation.
+    string(REGEX REPLACE "<<([^\\.]*[^ |]*).*" "\\1" image_name "${image_match}")
+
+    # set(image_name ${CMAKE_MATCH_1})
+
+    # message("image_name: ${image_name}")
+    message("image_name: ${image_name}")
+
+    # Remove spaces
+    string(REPLACE " " "-" new_image_name "${image_name}")
+    string(REPLACE "%20" "-" new_image_name "${new_image_name}")
+    string(REPLACE "_" "-" new_image_name "${new_image_name}")
+    string(REPLACE "${image_name}" "${new_image_name}" i "${i}")
+
+    message("new_image_name: ${new_image_name}")
+
+    string(REGEX REPLACE "[^\\.]\\." "" ext "${new_image_name}")
+    get_filename_component(dir ${input_name} DIRECTORY)
+
+    if(ext MATCHES "png|jpg|jpeg")
+      message("configure_file(${dir}/media/${image_name} ${CMAKE_BINARY_DIR}/media/${new_image_name} COPYONLY)")
+      configure_file("${dir}/media/${image_name}" "${CMAKE_BINARY_DIR}/media/${new_image_name}" COPYONLY)
+    endif()
+  endforeach()
+
+  message("======Markdown")
+
+  # Repeat for Markdown links
+  string(REGEX MATCHALL "<[^>]*>\([^\)]*\)" image_matches ${i})
+
+  foreach(image_match ${image_matches})
+    # message("image_match: ${image_match}")
+
+    # It was tricky to remove trailing whitespaces when the bar was escaped. Fixed by first matching until extension punctuation.
+    string(REGEX MATCH ">\\(([^\\.]*[^ |]*)" m_ "${image_match}")
+    set(image_link_name ${CMAKE_MATCH_1})
+
+    # message("image_name: ${image_name}")
+    message("image_link_name: ${image_link_name}")
+
+    # Remove spaces
+    string(REPLACE "%20" " " image_name "${image_link_name}")
+    string(REPLACE " " "-" new_image_name "${image_name}")
+    string(REPLACE "_" "-" new_image_name "${new_image_name}")
+    string(REPLACE "${image_link_name}" "${new_image_name}" i "${i}")
+
+    message("new_image_name: ${new_image_name}")
+
+    string(REGEX REPLACE "[^\\.]\\." "" ext "${new_image_name}")
+    get_filename_component(dir ${input_name} DIRECTORY)
+
+    if(ext MATCHES "png|jpg|jpeg")
+      message("configure_file(${dir}/media/${image_name} ${CMAKE_BINARY_DIR}/media/${new_image_name} COPYONLY)")
+      configure_file("${dir}/media/${image_name}" "${CMAKE_BINARY_DIR}/media/${new_image_name}" COPYONLY)
+    endif()
+  endforeach()
+
+  # string(REGEX REPLACE "\\!\\[\\[([${image_characters}]*)\\|*([0-9]*)" "" image_match "${image_match}")
+
+  # Remove spaces
+  # string(REPLACE " " "_" new_image_name "${image_name}")
+
+  # Convert to Markdown links
+  string(REGEX REPLACE "<<([^\\.]*[^ |]*)([ |0-9x]*)([^>]*)>>" "[\\3](\\1)" i ${i})
+  string(REPLACE "<" "[" i "${i}")
+  string(REPLACE ">" "]" i "${i}")
+
+  # cmake_path()
+  get_filename_component(out_name ${input_name} NAME)
+
+  # set(outname "${out_name}.tex")
+  # message("file(WRITE \"${out_name}\" \"${i}\")")
+  file(WRITE ${CMAKE_BINARY_DIR}/${out_name} "${i}")
+
+  # https://stackoverflow.com/questions/25482822/add-dependency-to-the-cmake-generated-build-system-itself
+  set_property(
+    DIRECTORY
+    APPEND
+    PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${input_name}"
+  )
+
+  # message("
+  #   add_custom_command(
+  #   OUTPUT ${out_name}.tex
+  #   COMMAND pandoc ARGS --template=template/pandoc.template ${CMAKE_BINARY_DIR}/${out_name} -o ${CMAKE_SOURCE_DIR}/${out_name}.tex
+  #   BYPRODUCTS ${out_name}.tex
+  #   DEPENDS ${input_name}
+  #   VERBATIM
+  # )
+  # ")
+
+  add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${out_name}.tex
+    COMMAND pandoc ARGS --template=template/pandoc.template ${CMAKE_BINARY_DIR}/${out_name} -o ${CMAKE_CURRENT_BINARY_DIR}/${out_name}.tex
+    # BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${out_name}.tex
+    DEPENDS ${input_name}
+    VERBATIM
+  )
+
+  set(${filevar} ${CMAKE_BINARY_DIR}/${out_name}.tex PARENT_SCOPE)
+
+  # message(FATAL_ERROR "")
+  # --template=default.latex
+  # set(make_pdf_depends ${out_name}.tex.stamp)
+
+  # list(APPEND LATEX_INPUTS ${CMAKE_SOURCE_DIR}/${out_name}.tex)
+endfunction()
+
 #############################################################################
 # Commands provided by the UseLATEX.cmake "package"
 #############################################################################
@@ -1734,6 +1902,7 @@ function(add_latex_targets latex_main_input)
 endfunction(add_latex_targets)
 
 function(add_latex_document latex_main_input)
+  process_markup_file(latex_main_input)
   latex_get_output_path(output_dir)
   if(output_dir)
     parse_add_latex_arguments(add_latex_document ${latex_main_input} ${ARGN})
