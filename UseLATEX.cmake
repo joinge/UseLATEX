@@ -1115,6 +1115,92 @@ function(latex_copy_input_file file)
   endif()
 endfunction(latex_copy_input_file)
 
+function(postprocess_pandoc markdown_file latex_file)
+  # message("file(READ ${markdown_file}")
+  # message("file(READ ${latex_file}")
+  file(READ ${markdown_file} m)
+  file(READ ${latex_file} l)
+
+  # Square brackets are tricky in CMake regex. Replace them.
+  string(REPLACE "[" "<" m "${m}")
+  string(REPLACE "]" ">" m "${m}")
+
+  # string(REPLACE "{" "§" m "${m}")
+  # string(REPLACE "}" "¦" m "${m}")
+
+  # Images with attributes
+  # message("===========================")
+  string(REGEX MATCHALL "<[^>]*>\\([^\\)]*\\){[^}]*" image_matches ${m})
+
+  foreach(image_match ${image_matches})
+    # message("image_match: ${image_match}")
+    string(REGEX MATCH "\\(([^\\)]*)\\){([^}]*)" match "${image_match}")
+
+    set(image_name ${CMAKE_MATCH_1})
+    set(attributes ${CMAKE_MATCH_2})
+
+    if(NOT attributes MATCHES "width")
+      set(attributes "width=\\linewidth ${attributes}")
+    elseif(attributes MATCHES "width=[0-9]*%")
+      string(REGEX REPLACE "width=([0-9]*)%" "width=\\1\\linewidth" attributes ${attributes})
+    endif()
+
+    if(NOT attributes MATCHES " keepaspectratio ")
+      set(attributes " ${attributes} keepaspectratio ")
+    endif()
+
+    # # Remove attributes that \includegraphics already handles
+    # string(REGEX REPLACE " width=[^ ,]*" " " attributes ${attributes})
+    # string(REGEX REPLACE " height=[^ ,]*" " " attributes ${attributes})
+
+    # Cleanup spacing
+    # if(attributes MATCHES " [^ ,] ")
+      string(REGEX MATCHALL " [^ ,]+" attribute_list "${attributes} ")
+      set(attributes " ")
+      foreach( attribute ${attribute_list} )
+        # string(REGEX REPLACE " [, ]*" " " attribute ${attributes})
+
+        # Non-empty?
+        if(attribute MATCHES " [a-z=0-9] ")
+          set(attributes " ${attributes}, ${attribute} ")
+        endif()
+      endforeach()
+
+    # endif()
+
+    # if(attributes MATCHES " [^ ] ")
+    # string(REGEX REPLACE " ," " " attributes ${attributes})
+    # string(REGEX REPLACE " *" " " attributes ${attributes})
+    # # string(REGEX REPLACE " *$" " " attributes ${attributes})
+    # string(STRIP ${attributes} attributes)
+    # string(REGEX REPLACE " " " , " attributes " ${attributes} ")
+    string(REGEX REPLACE " \\[[^{]*{${image_name}" "[${attributes}, keepaspectratio]{${image_name}" l "${l} ")
+    # endif()
+
+    # message(" image_name(postprocess) : ${image_name} ")
+
+    # # Remove spaces
+    # string(REPLACE " " " -" new_image_name "${image_name} ")
+    # string(REPLACE " %20" "-" new_image_name "${new_image_name} ")
+    # string(REPLACE " _" "-" new_image_name "${new_image_name} ")
+    # string(REPLACE " ${image_name}" "${new_image_name}" i "${i} ")
+
+    # message(" new_image_name: ${new_image_name} ")
+
+    # string(REGEX REPLACE " [^\\.]\\." "" ext "${new_image_name} ")
+    # get_filename_component(dir ${input_name} DIRECTORY)
+
+    # if(ext MATCHES " png|jpg|jpeg ")
+    #   message(" configure_file(${dir}/media/${image_name} ${CMAKE_BINARY_DIR}/media/${new_image_name} COPYONLY) ")
+    #   configure_file(" ${dir}/media/${image_name}" "${CMAKE_BINARY_DIR}/media/${new_image_name} " COPYONLY)
+    # endif()
+  endforeach()
+
+  # message(FATAL_ERROR " ")
+  file(WRITE ${latex_file} " ${l} ")
+
+endfunction()
+
 function(process_markup_file filevar)
   # Notes
   # - Reconfiration is triggered when Markdown changes. This is to allow for image list to be determined from that file.
@@ -1122,31 +1208,33 @@ function(process_markup_file filevar)
   # Stuff to improve:
   # - Don't hardcode media folder
   # - Clear media folder first?
-  # set(make_pdf_depends " ")
-  get_filename_component(file_ext "${${filevar}}" EXT)
-  string(TOLOWER "${file_ext}" file_ext)
+  # - Read image metadata (e.g. with >> identify -verbose <img>)
 
-  if(file_ext STREQUAL ".md")
+  # set(make_pdf_depends " ")
+  get_filename_component(file_ext " ${${filevar}} " EXT)
+  string(TOLOWER " ${file_ext} " file_ext)
+
+  if(file_ext STREQUAL " .md ")
     message(STATUS " Processing markdown file: ${${filevar}} ")
   else()
     return()
   endif()
 
-  set(input_name "${${filevar}}")
+  set(input_name " ${${filevar}} ")
 
-  # "${type}" STREQUAL ".tex"
+  # " ${type}" STREQUAL ".tex "
 
   # Process Obsidian notes first, to check for external images
   # execute_process(COMMAND cmake -E make_directory ${CMAKE_SOURCE_DIR}/media)
   # list(APPEND LATEX_IMAGE_DIRS media)
-  set(image_characters "- A-Z:ÆØÅa-zæøå_0-9\\.")
+  set(image_characters " - A-Z:ÆØÅa-zæøå_0-9\\. ")
 
   file(READ ${input_name} i)
 
   # Square brackets are tricky in regex. Replace them.
-  string(REPLACE "[" "<" i "${i}")
-  string(REPLACE "]" ">" i "${i}")
-  string(REPLACE "\\|" "|" i "${i}")
+  string(REPLACE " [" "<" i "${i} ")
+  string(REPLACE " ]" ">" i "${i} ")
+  string(REPLACE " \\|" "|" i "${i} ")
 
   # message(${i})
 
@@ -1169,114 +1257,150 @@ function(process_markup_file filevar)
 
   # Copy all wikilink images to media folder
   # message(" string(REGEX MATCHALL "\\!\\[\\[[${image_characters}\\|]*\\]\\]" image_matches ${i}) ")
-  string(REGEX MATCHALL "<<[^\\.]*[^>]*>>" image_matches ${i})
+  string(REGEX MATCHALL " <<[^\\.]*[^>]*>> " image_matches ${i})
 
   foreach(image_match ${image_matches})
-    # message("image_match: ${image_match}")
+    # message(" image_match: ${image_match} ")
 
     # It was tricky to remove trailing whitespaces when the bar was escaped. Fixed by first matching until extension punctuation.
-    string(REGEX REPLACE "<<([^\\.]*[^ |]*).*" "\\1" image_name "${image_match}")
+    string(REGEX REPLACE " <<([^\\.]*[^ |]*) .*" "\\1" image_name "${image_match} ")
 
     # set(image_name ${CMAKE_MATCH_1})
 
-    # message("image_name: ${image_name}")
-    message("image_name: ${image_name}")
+    # message(" image_name: ${image_name} ")
+    message(" image_name: ${image_name} ")
 
     # Remove spaces
-    string(REPLACE " " "-" new_image_name "${image_name}")
-    string(REPLACE "%20" "-" new_image_name "${new_image_name}")
-    string(REPLACE "_" "-" new_image_name "${new_image_name}")
-    string(REPLACE "${image_name}" "${new_image_name}" i "${i}")
+    string(REPLACE " " " -" new_image_name "${image_name} ")
+    string(REPLACE " %20" "-" new_image_name "${new_image_name} ")
+    string(REPLACE " _" "-" new_image_name "${new_image_name} ")
+    string(REPLACE " ${image_name}" "${new_image_name}" i "${i} ")
 
-    message("new_image_name: ${new_image_name}")
+    message(" new_image_name: ${new_image_name} ")
 
-    string(REGEX REPLACE "[^\\.]\\." "" ext "${new_image_name}")
+    string(REGEX REPLACE " [^\\.]\\." "" ext "${new_image_name} ")
     get_filename_component(dir ${input_name} DIRECTORY)
 
-    if(ext MATCHES "png|jpg|jpeg")
-      message("configure_file(${dir}/media/${image_name} ${CMAKE_BINARY_DIR}/media/${new_image_name} COPYONLY)")
-      configure_file("${dir}/media/${image_name}" "${CMAKE_BINARY_DIR}/media/${new_image_name}" COPYONLY)
+    if(ext MATCHES " png|jpg|jpeg ")
+      message(" configure_file(${dir}/media/${image_name} ${CMAKE_BINARY_DIR}/media/${new_image_name} COPYONLY) ")
+      configure_file(" ${dir}/media/${image_name}" "${CMAKE_BINARY_DIR}/media/${new_image_name} " COPYONLY)
     endif()
   endforeach()
 
-  message("======Markdown")
+  message(" ======Markdown ")
 
   # Repeat for Markdown links
-  string(REGEX MATCHALL "<[^>]*>\([^\)]*\)" image_matches ${i})
+  string(REGEX MATCHALL " <[^>]*>\([^\)]*\) " image_matches ${i})
 
   foreach(image_match ${image_matches})
-    # message("image_match: ${image_match}")
+    # message(" image_match: ${image_match} ")
 
     # It was tricky to remove trailing whitespaces when the bar was escaped. Fixed by first matching until extension punctuation.
-    string(REGEX MATCH ">\\(([^\\.]*[^ |]*)" m_ "${image_match}")
+    string(REGEX MATCH " >\\(([^\\.]*[^ |]*) " m_ " ${image_match} ")
     set(image_link_name ${CMAKE_MATCH_1})
 
-    # message("image_name: ${image_name}")
-    message("image_link_name: ${image_link_name}")
+    # message(" image_name: ${image_name} ")
+    message(" image_link_name: ${image_link_name} ")
 
     # Remove spaces
-    string(REPLACE "%20" " " image_name "${image_link_name}")
-    string(REPLACE " " "-" new_image_name "${image_name}")
-    string(REPLACE "_" "-" new_image_name "${new_image_name}")
-    string(REPLACE "${image_link_name}" "${new_image_name}" i "${i}")
+    string(REPLACE " %20" " " image_name " ${image_link_name} ")
+    string(REPLACE " " " -" new_image_name "${image_name} ")
+    string(REPLACE " _" "-" new_image_name "${new_image_name} ")
+    string(REPLACE " ${image_link_name}" "${new_image_name}" i "${i} ")
 
-    message("new_image_name: ${new_image_name}")
+    message(" new_image_name: ${new_image_name} ")
 
-    string(REGEX REPLACE "[^\\.]\\." "" ext "${new_image_name}")
+    string(REGEX REPLACE " [^\\.]\\." "" ext "${new_image_name} ")
     get_filename_component(dir ${input_name} DIRECTORY)
 
-    if(ext MATCHES "png|jpg|jpeg")
-      message("configure_file(${dir}/media/${image_name} ${CMAKE_BINARY_DIR}/media/${new_image_name} COPYONLY)")
-      configure_file("${dir}/media/${image_name}" "${CMAKE_BINARY_DIR}/media/${new_image_name}" COPYONLY)
+    if(ext MATCHES " png|jpg|jpeg ")
+      message(" configure_file(${dir}/media/${image_name} ${CMAKE_BINARY_DIR}/media/${new_image_name} COPYONLY) ")
+      configure_file(" ${dir}/media/${image_name}" "${CMAKE_BINARY_DIR}/media/${new_image_name} " COPYONLY)
     endif()
   endforeach()
 
-  # string(REGEX REPLACE "\\!\\[\\[([${image_characters}]*)\\|*([0-9]*)" "" image_match "${image_match}")
+  # string(REGEX REPLACE " \\!\\[\\[([${image_characters}]*) \\|*([0-9]*) " " " image_match " ${image_match} ")
 
   # Remove spaces
-  # string(REPLACE " " "_" new_image_name "${image_name}")
+  # string(REPLACE " " " _" new_image_name "${image_name} ")
 
   # Convert to Markdown links
-  string(REGEX REPLACE "<<([^\\.]*[^ |]*)([ |0-9x]*)([^>]*)>>" "[\\3](\\1)" i ${i})
-  string(REPLACE "<" "[" i "${i}")
-  string(REPLACE ">" "]" i "${i}")
+  string(REGEX REPLACE " <<([^\\.]*[^ |]*)([ |0-9x]*)([^>]*) >>" "[\\3](\\1) " i ${i})
+  string(REPLACE " <" "[" i "${i} ")
+  string(REPLACE " >" "]" i "${i} ")
 
   # cmake_path()
   get_filename_component(out_name ${input_name} NAME)
 
-  # set(outname "${out_name}.tex")
-  # message("file(WRITE \"${out_name}\" \"${i}\")")
-  file(WRITE ${CMAKE_BINARY_DIR}/${out_name} "${i}")
+  # set(outname " ${out_name}.tex ")
+  # message(" file(WRITE \"${out_name}\" \"${i}\") ")
+  file(WRITE ${CMAKE_BINARY_DIR}/${out_name} " ${i} ")
 
   # https://stackoverflow.com/questions/25482822/add-dependency-to-the-cmake-generated-build-system-itself
   set_property(
     DIRECTORY
     APPEND
     PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${input_name}"
+    " ${input_name} "
   )
 
-  # message("
-  #   add_custom_command(
-  #   OUTPUT ${out_name}.tex
-  #   COMMAND pandoc ARGS --template=template/pandoc.template ${CMAKE_BINARY_DIR}/${out_name} -o ${CMAKE_SOURCE_DIR}/${out_name}.tex
-  #   BYPRODUCTS ${out_name}.tex
-  #   DEPENDS ${input_name}
-  #   VERBATIM
-  # )
-  # ")
+ message("
+        add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${out_name}.tex
+        COMMAND pandoc ARGS
+        --template=template/pandoc.template
+        ${CMAKE_BINARY_DIR}/${out_name}
+        -o ${CMAKE_CURRENT_BINARY_DIR}/${out_name}.tex
+        COMMAND ${CMAKE_COMMAND} ARGS
+        -D LATEX_BUILD_COMMAND=postprocess_pandoc
+        -D MARKDOWN_FILE=${CMAKE_BINARY_DIR}/${out_name}
+        -D PANDOC_FILE=${CMAKE_CURRENT_BINARY_DIR}/${out_name}.tex
+        -P ${LATEX_USE_LATEX_LOCATION} > /home/me/logg.log
+
+        # BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${out_name}.tex
+        DEPENDS ${input_name} template/pandoc.template
+        VERBATIM
+        ) ")
+
 
   add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${out_name}.tex
-    COMMAND pandoc ARGS --template=template/pandoc.template ${CMAKE_BINARY_DIR}/${out_name} -o ${CMAKE_CURRENT_BINARY_DIR}/${out_name}.tex
+    COMMAND ${CMAKE_COMMAND} -E echo " Running Pandoc... "
+    COMMAND pandoc
+    --template=template/pandoc.template
+    ${CMAKE_BINARY_DIR}/${out_name}
+    -o ${CMAKE_CURRENT_BINARY_DIR}/${out_name}.tex
+    COMMAND ${CMAKE_COMMAND} -E echo " Running post-processing... "
+    COMMAND ${CMAKE_COMMAND}
+    -D LATEX_BUILD_COMMAND=postprocess_pandoc
+    -D MARKDOWN_FILE=${CMAKE_BINARY_DIR}/${out_name}
+    -D PANDOC_FILE=${CMAKE_CURRENT_BINARY_DIR}/${out_name}.tex
+    -P ${LATEX_USE_LATEX_LOCATION}
+    # --trace-expand
+    COMMAND ${CMAKE_COMMAND} -E echo " ...done "
+
     # BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${out_name}.tex
-    DEPENDS ${input_name}
+    DEPENDS ${input_name} template/pandoc.template ${LATEX_USE_LATEX_LOCATION}
     VERBATIM
   )
 
+  # postprocess_pandoc(${CMAKE_BINARY_DIR}/${out_name} ${CMAKE_CURRENT_BINARY_DIR}/${out_name}.tex)
+
+  # COMMAND${CMAKE_COMMAND} -E chdir ${output_dir}
+  #       ${CMAKE_COMMAND}
+  #       -D LATEX_BUILD_COMMAND=makeglossaries
+  #       -D LATEX_TARGET=${LATEX_TARGET}
+  #       -D MAKEINDEX_COMPILER=${MAKEINDEX_COMPILER}
+  #       -D XINDY_COMPILER=${XINDY_COMPILER}
+  #       -D MAKEGLOSSARIES_COMPILER_ARGS=${MAKEGLOSSARIES_COMPILER_ARGS}
+  #       -P ${LATEX_USE_LATEX_LOCATION}
+
+  # COMMAND${CMAKE_COMMAND} -E chdir ${output_dir}
+  #       ${latex_build_command}
+
   set(${filevar} ${CMAKE_BINARY_DIR}/${out_name}.tex PARENT_SCOPE)
 
-  # message(FATAL_ERROR "")
+  # message(FATAL_ERROR " ")
   # --template=default.latex
   # set(make_pdf_depends ${out_name}.tex.stamp)
 
@@ -1284,12 +1408,12 @@ function(process_markup_file filevar)
 endfunction()
 
 #############################################################################
-# Commands provided by the UseLATEX.cmake "package"
+# Commands provided by the UseLATEX.cmake " package "
 #############################################################################
 
 function(latex_usage command message)
   message(SEND_ERROR
-      "${message}\n  Usage: ${command}(<tex_file>\n           [BIBFILES <bib_file> <bib_file> ...]\n           [INPUTS <tex_file> <tex_file> ...]\n           [IMAGE_DIRS <directory1> <directory2> ...]\n           [IMAGES <image_file1> <image_file2>\n           [CONFIGURE <tex_file> <tex_file> ...]\n           [DEPENDS <tex_file> <tex_file> ...]\n           [MULTIBIB_NEWCITES] <suffix_list>\n           [USE_BIBLATEX] [USE_INDEX] [USE_GLOSSARY] [USE_NOMENCL]\n           [FORCE_PDF] [FORCE_DVI] [FORCE_HTML]\n           [TARGET_NAME] <name>\n           [EXCLUDE_FROM_ALL]\n           [EXCLUDE_FROM_DEFAULTS])"
+      " ${message}\n Usage: ${command}(<tex_file>\n [BIBFILES <bib_file> <bib_file> ...]\n [INPUTS <tex_file> <tex_file> ...]\n [IMAGE_DIRS <directory1> <directory2> ...]\n [IMAGES <image_file1> <image_file2>\n [CONFIGURE <tex_file> <tex_file> ...]\n [DEPENDS <tex_file> <tex_file> ...]\n [MULTIBIB_NEWCITES] <suffix_list>\n [USE_BIBLATEX] [USE_INDEX] [USE_GLOSSARY] [USE_NOMENCL]\n [FORCE_PDF] [FORCE_DVI] [FORCE_HTML]\n [TARGET_NAME] <name>\n [EXCLUDE_FROM_ALL]\n [EXCLUDE_FROM_DEFAULTS]) "
     )
 endfunction(latex_usage command message)
 
@@ -1330,29 +1454,29 @@ function(parse_add_latex_arguments command latex_main_input)
     INCLUDE_DIRECTORIES
     )
   cmake_parse_arguments(
-    LATEX "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+    LATEX " ${options}" "${oneValueArgs}" "${multiValueArgs} " ${ARGN})
 
   # Handle invalid and deprecated arguments
   if(LATEX_UNPARSED_ARGUMENTS)
-    latex_usage(${command} "Invalid or deprecated arguments: ${LATEX_UNPARSED_ARGUMENTS}")
+    latex_usage(${command} " Invalid or deprecated arguments: ${LATEX_UNPARSED_ARGUMENTS} ")
   endif()
   if(LATEX_USE_GLOSSARIES)
-    latex_usage(${command} "USE_GLOSSARIES option removed in version 1.6.1. Use USE_GLOSSARY instead.")
+    latex_usage(${command} " USE_GLOSSARIES option removed in version 1.6.1. Use USE_GLOSSARY instead. ")
   endif()
   if(LATEX_DEFAULT_PDF)
-    latex_usage(${command} "DEFAULT_PDF option removed in version 2.0. Use FORCE_PDF option or LATEX_DEFAULT_BUILD CMake variable instead.")
+    latex_usage(${command} " DEFAULT_PDF option removed in version 2.0. Use FORCE_PDF option or LATEX_DEFAULT_BUILD CMake variable instead. ")
   endif()
   if(LATEX_DEFAULT_SAFEPDF)
-    latex_usage(${command} "DEFAULT_SAFEPDF option removed in version 2.0. Use LATEX_DEFAULT_BUILD CMake variable instead.")
+    latex_usage(${command} " DEFAULT_SAFEPDF option removed in version 2.0. Use LATEX_DEFAULT_BUILD CMake variable instead. ")
   endif()
   if(LATEX_DEFAULT_DVI)
-    latex_usage(${command} "DEFAULT_DVI option removed in version 2.0. Use FORCE_DVI option or LATEX_DEFAULT_BUILD CMake variable instead.")
+    latex_usage(${command} " DEFAULT_DVI option removed in version 2.0. Use FORCE_DVI option or LATEX_DEFAULT_BUILD CMake variable instead. ")
   endif()
   if(LATEX_NO_DEFAULT)
-    latex_usage(${command} "NO_DEFAULT option removed in version 2.0. Use EXCLUDE_FROM_ALL instead.")
+    latex_usage(${command} " NO_DEFAULT option removed in version 2.0. Use EXCLUDE_FROM_ALL instead. ")
   endif()
   if(LATEX_MANGLE_TARGET_NAMES)
-    latex_usage(${command} "MANGLE_TARGET_NAMES option removed in version 2.0. All LaTeX targets use mangled names now.")
+    latex_usage(${command} " MANGLE_TARGET_NAMES option removed in version 2.0. All LaTeX targets use mangled names now. ")
   endif()
 
   # Capture the first argument, which is the main LaTeX input.
@@ -1380,33 +1504,33 @@ function(add_latex_targets_internal)
   set(latex_build_command
     ${LATEX_COMPILER} ${LATEX_COMPILER_ARGS} ${synctex_flags} ${LATEX_MAIN_INPUT}
     )
-  if(LATEX_COMPILER_ARGS MATCHES ".*batchmode.*")
+  if(LATEX_COMPILER_ARGS MATCHES " .*batchmode.* ")
     # Wrap command in script that dumps the log file on error. This makes sure
     # errors can be seen.
     set(latex_build_command
       ${CMAKE_COMMAND}
         -D LATEX_BUILD_COMMAND=execute_latex
-        -D LATEX_WORKING_DIRECTORY="${output_dir}"
-        -D LATEX_FULL_COMMAND="${latex_build_command}"
-        -D LATEX_OUTPUT_FILE="${LATEX_TARGET}.dvi"
-        -D LATEX_LOG_FILE="${LATEX_TARGET}.log"
-        -P "${LATEX_USE_LATEX_LOCATION}"
+        -D LATEX_WORKING_DIRECTORY=" ${output_dir} "
+        -D LATEX_FULL_COMMAND=" ${latex_build_command} "
+        -D LATEX_OUTPUT_FILE=" ${LATEX_TARGET}.dvi "
+        -D LATEX_LOG_FILE=" ${LATEX_TARGET}.log "
+        -P " ${LATEX_USE_LATEX_LOCATION} "
       )
   endif()
   set(pdflatex_build_command
     ${PDFLATEX_COMPILER} ${PDFLATEX_COMPILER_ARGS} ${synctex_flags} ${LATEX_MAIN_INPUT}
     )
-  if(PDFLATEX_COMPILER_ARGS MATCHES ".*batchmode.*")
+  if(PDFLATEX_COMPILER_ARGS MATCHES " .*batchmode.* ")
     # Wrap command in script that dumps the log file on error. This makes sure
     # errors can be seen.
     set(pdflatex_build_command
       ${CMAKE_COMMAND}
         -D LATEX_BUILD_COMMAND=execute_latex
-        -D LATEX_WORKING_DIRECTORY="${output_dir}"
-        -D LATEX_FULL_COMMAND="${pdflatex_build_command}"
-        -D LATEX_OUTPUT_FILE="${LATEX_TARGET}.pdf"
-        -D LATEX_LOG_FILE="${LATEX_TARGET}.log"
-        -P "${LATEX_USE_LATEX_LOCATION}"
+        -D LATEX_WORKING_DIRECTORY=" ${output_dir} "
+        -D LATEX_FULL_COMMAND=" ${pdflatex_build_command} "
+        -D LATEX_OUTPUT_FILE=" ${LATEX_TARGET}.pdf "
+        -D LATEX_LOG_FILE=" ${LATEX_TARGET}.log "
+        -P " ${LATEX_USE_LATEX_LOCATION} "
       )
   endif()
 
@@ -1415,7 +1539,7 @@ function(add_latex_targets_internal)
     # that the copied files can be found. It also needs to end with an
     # empty directory so that the standard system directories are included
     # after any specified.
-    set(LATEX_INCLUDE_DIRECTORIES . ${LATEX_INCLUDE_DIRECTORIES} "")
+    set(LATEX_INCLUDE_DIRECTORIES . ${LATEX_INCLUDE_DIRECTORIES} " ")
 
     # CMake separates items in a list with a semicolon. Lists of
     # directories on most systems are separated by colons, so we can do a
@@ -1423,9 +1547,9 @@ function(add_latex_targets_internal)
     # semicolons, but we replace them with the $<SEMICOLON> generator
     # expression to make sure CMake treats it as a single string.
     if(CMAKE_HOST_WIN32)
-      string(REPLACE ";" "$<SEMICOLON>" TEXINPUTS "${LATEX_INCLUDE_DIRECTORIES}")
+      string(REPLACE " ;" "$<SEMICOLON>" TEXINPUTS "${LATEX_INCLUDE_DIRECTORIES} ")
     else()
-      string(REPLACE ";" ":" TEXINPUTS "${LATEX_INCLUDE_DIRECTORIES}")
+      string(REPLACE " ;" ":" TEXINPUTS "${LATEX_INCLUDE_DIRECTORIES} ")
     endif()
 
     # Set the TEXINPUTS environment variable
@@ -1438,7 +1562,7 @@ function(add_latex_targets_internal)
   if(NOT LATEX_TARGET_NAME)
     # Use the main filename (minus the .tex) as the target name. Remove any
     # spaces since CMake cannot have spaces in its target names.
-    string(REPLACE " " "_" LATEX_TARGET_NAME ${LATEX_TARGET})
+    string(REPLACE " " " _ " LATEX_TARGET_NAME ${LATEX_TARGET})
   endif()
 
   # Some LaTeX commands may need to be modified (or may not work) if the main
@@ -1485,10 +1609,10 @@ function(add_latex_targets_internal)
   # place them in LATEX_IMAGES.
   foreach(dir ${LATEX_IMAGE_DIRS})
     if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${dir})
-      message(WARNING "Image directory ${CMAKE_CURRENT_SOURCE_DIR}/${dir} does not exist.  Are you sure you gave relative directories to IMAGE_DIRS?")
+      message(WARNING " Image directory ${CMAKE_CURRENT_SOURCE_DIR}/${dir} does not exist. Are you sure you gave relative directories to IMAGE_DIRS? ")
     endif()
     foreach(extension ${LATEX_IMAGE_EXTENSIONS})
-      if(${CMAKE_VERSION} VERSION_LESS "3.12")
+      if(${CMAKE_VERSION} VERSION_LESS " 3.12 ")
         file(GLOB files ${CMAKE_CURRENT_SOURCE_DIR}/${dir}/*${extension})
       else()
         file(GLOB files CONFIGURE_DEPENDS
@@ -1517,11 +1641,11 @@ function(add_latex_targets_internal)
   foreach(input ${LATEX_MAIN_INPUT} ${LATEX_INPUTS})
     list(APPEND make_dvi_depends ${output_dir}/${input})
     list(APPEND make_pdf_depends ${output_dir}/${input})
-    if(${input} MATCHES "\\.tex$")
+    if(${input} MATCHES " \\.tex$ ")
       # Dependent .tex files might have their own .aux files created.  Make
       # sure these get cleaned as well.  This might replicate the cleaning
       # of the main .aux file, which is OK.
-      string(REGEX REPLACE "\\.tex$" "" input_we ${input})
+      string(REGEX REPLACE " \\.tex$" " " input_we ${input})
       list(APPEND auxiliary_clean_files
         ${output_dir}/${input_we}.aux
         ${output_dir}/${input}.aux
@@ -1591,12 +1715,12 @@ function(add_latex_targets_internal)
     set(suppress_bib_output)
     if(LATEX_USE_BIBLATEX)
       if(NOT BIBER_COMPILER)
-        message(SEND_ERROR "I need the biber command.")
+        message(SEND_ERROR " I need the biber command. ")
       endif()
       set(bib_compiler ${BIBER_COMPILER})
       set(bib_compiler_flags ${BIBER_COMPILER_ARGS})
 
-      if(NOT BIBER_COMPILER_ARGS MATCHES ".*-q.*")
+      if(NOT BIBER_COMPILER_ARGS MATCHES " .*-q.* ")
         # Only suppress bib output if the quiet option is not specified.
         set(suppress_bib_output TRUE)
       endif()
@@ -1630,11 +1754,11 @@ function(add_latex_targets_internal)
         set(full_bib_command
           ${CMAKE_COMMAND}
           -D LATEX_BUILD_COMMAND=execute_latex
-          -D LATEX_WORKING_DIRECTORY="${output_dir}"
-          -D LATEX_FULL_COMMAND="${full_bib_command}"
-          -D LATEX_OUTPUT_FILE="${LATEX_TARGET}.bbl"
-          -D LATEX_LOG_FILE="${LATEX_TARGET}.blg"
-          -P "${LATEX_USE_LATEX_LOCATION}"
+          -D LATEX_WORKING_DIRECTORY=" ${output_dir} "
+          -D LATEX_FULL_COMMAND=" ${full_bib_command} "
+          -D LATEX_OUTPUT_FILE=" ${LATEX_TARGET}.bbl "
+          -D LATEX_LOG_FILE=" ${LATEX_TARGET}.blg "
+          -P " ${LATEX_USE_LATEX_LOCATION} "
           )
       endif()
       set(make_dvi_command ${make_dvi_command}
@@ -1651,7 +1775,7 @@ function(add_latex_targets_internal)
     endforeach (bibfile ${LATEX_BIBFILES})
   else()
     if(LATEX_MULTIBIB_NEWCITES)
-      message(WARNING "MULTIBIB_NEWCITES has no effect without BIBFILES option.")
+      message(WARNING " MULTIBIB_NEWCITES has no effect without BIBFILES option. ")
     endif()
   endif()
 
@@ -1679,7 +1803,7 @@ function(add_latex_targets_internal)
     endforeach()
   else()
     if(LATEX_INDEX_NAMES)
-      message(WARNING "INDEX_NAMES has no effect without USE_INDEX option.")
+      message(WARNING " INDEX_NAMES has no effect without USE_INDEX option. ")
     endif()
   endif()
 
@@ -1707,15 +1831,15 @@ function(add_latex_targets_internal)
 
   if(LATEX_USE_SYNCTEX)
     if(NOT GZIP)
-      message(SEND_ERROR "UseLATEX.cmake: USE_SYNTEX option requires gzip program.  Set GZIP variable.")
+      message(SEND_ERROR " UseLATEX.cmake: USE_SYNTEX option requires gzip program. Set GZIP variable. ")
     endif()
     set(make_dvi_command ${make_dvi_command}
       COMMAND ${CMAKE_COMMAND}
       -D LATEX_BUILD_COMMAND=correct_synctex
       -D LATEX_TARGET=${LATEX_TARGET}
       -D GZIP=${GZIP}
-      -D "LATEX_SOURCE_DIRECTORY=${CMAKE_CURRENT_SOURCE_DIR}"
-      -D "LATEX_BINARY_DIRECTORY=${output_dir}"
+      -D " LATEX_SOURCE_DIRECTORY=${CMAKE_CURRENT_SOURCE_DIR} "
+      -D " LATEX_BINARY_DIRECTORY=${output_dir} "
       -P ${LATEX_USE_LATEX_LOCATION}
       )
     set(make_pdf_command ${make_pdf_command}
@@ -1723,8 +1847,8 @@ function(add_latex_targets_internal)
       -D LATEX_BUILD_COMMAND=correct_synctex
       -D LATEX_TARGET=${LATEX_TARGET}
       -D GZIP=${GZIP}
-      -D "LATEX_SOURCE_DIRECTORY=${CMAKE_CURRENT_SOURCE_DIR}"
-      -D "LATEX_BINARY_DIRECTORY=${output_dir}"
+      -D " LATEX_SOURCE_DIRECTORY=${CMAKE_CURRENT_SOURCE_DIR} "
+      -D " LATEX_BINARY_DIRECTORY=${output_dir} "
       -P ${LATEX_USE_LATEX_LOCATION}
       )
   endif()
@@ -1746,7 +1870,7 @@ function(add_latex_targets_internal)
     )
 
   # Capture the default build.
-  string(TOLOWER "${LATEX_DEFAULT_BUILD}" default_build)
+  string(TOLOWER " ${LATEX_DEFAULT_BUILD} " default_build)
 
   if((NOT LATEX_FORCE_PDF) AND (NOT LATEX_FORCE_DVI) AND (NOT LATEX_FORCE_HTML))
     set(no_force TRUE)
@@ -1830,7 +1954,7 @@ function(add_latex_targets_internal)
 
     if(HTLATEX_COMPILER AND LATEX_MAIN_INPUT_SUBDIR)
       message(STATUS
-        "Disabling HTML build for ${LATEX_TARGET_NAME}.tex because the main file is in subdirectory ${LATEX_MAIN_INPUT_SUBDIR}"
+        " Disabling HTML build for ${LATEX_TARGET_NAME}.tex because the main file is in subdirectory ${LATEX_MAIN_INPUT_SUBDIR} "
         )
       # The code below to run HTML assumes that LATEX_TARGET.tex is in the
       # current directory. I have tried to specify that LATEX_TARGET.tex is
@@ -1841,13 +1965,13 @@ function(add_latex_targets_internal)
       # this, but make sure it runs on many platforms and build programs.
     elseif(HTLATEX_COMPILER)
       # htlatex places the output in a different location
-      set(HTML_OUTPUT "${output_dir}/${LATEX_TARGET}.html")
+      set(HTML_OUTPUT " ${output_dir}/${LATEX_TARGET}.html ")
       add_custom_command(OUTPUT ${HTML_OUTPUT}
         COMMAND ${CMAKE_COMMAND} -E chdir ${output_dir}
           ${HTLATEX_COMPILER} ${LATEX_MAIN_INPUT}
-          "${HTLATEX_COMPILER_TEX4HT_FLAGS}"
-          "${HTLATEX_COMPILER_TEX4HT_POSTPROCESSOR_FLAGS}"
-          "${HTLATEX_COMPILER_T4HT_POSTPROCESSOR_FLAGS}"
+          " ${HTLATEX_COMPILER_TEX4HT_FLAGS} "
+          " ${HTLATEX_COMPILER_TEX4HT_POSTPROCESSOR_FLAGS} "
+          " ${HTLATEX_COMPILER_T4HT_POSTPROCESSOR_FLAGS} "
           ${HTLATEX_COMPILER_ARGS}
         DEPENDS
           ${output_dir}/${LATEX_TARGET}.tex
@@ -1865,18 +1989,18 @@ function(add_latex_targets_internal)
   endif()
 
   # Set default targets.
-  if("${default_build}" STREQUAL "pdf")
+  if(" ${default_build}" STREQUAL "pdf ")
     add_custom_target(${LATEX_TARGET_NAME} DEPENDS ${pdf_target})
-  elseif("${default_build}" STREQUAL "dvi")
+  elseif(" ${default_build}" STREQUAL "dvi ")
     add_custom_target(${LATEX_TARGET_NAME} DEPENDS ${dvi_target})
-  elseif("${default_build}" STREQUAL "ps")
+  elseif(" ${default_build}" STREQUAL "ps ")
     add_custom_target(${LATEX_TARGET_NAME} DEPENDS ${ps_target})
-  elseif("${default_build}" STREQUAL "safepdf")
+  elseif(" ${default_build}" STREQUAL "safepdf ")
     add_custom_target(${LATEX_TARGET_NAME} DEPENDS ${safepdf_target})
-  elseif("${default_build}" STREQUAL "html")
+  elseif(" ${default_build}" STREQUAL "html ")
     add_custom_target(${LATEX_TARGET_NAME} DEPENDS ${html_target})
   else()
-    message(SEND_ERROR "LATEX_DEFAULT_BUILD set to an invalid value. See the documentation for that variable.")
+    message(SEND_ERROR " LATEX_DEFAULT_BUILD set to an invalid value. See the documentation for that variable. ")
   endif()
 
   if(NOT LATEX_EXCLUDE_FROM_ALL)
@@ -1884,11 +2008,11 @@ function(add_latex_targets_internal)
   endif()
 
   set_directory_properties(.
-    ADDITIONAL_MAKE_CLEAN_FILES "${auxiliary_clean_files}"
+    ADDITIONAL_MAKE_CLEAN_FILES " ${auxiliary_clean_files} "
     )
 
   add_custom_target(${auxclean_target}
-    COMMENT "Cleaning auxiliary LaTeX files."
+    COMMENT " Cleaning auxiliary LaTeX files. "
     COMMAND ${CMAKE_COMMAND} -E remove ${auxiliary_clean_files}
     )
   add_dependencies(auxclean ${auxclean_target})
@@ -1940,33 +2064,40 @@ endfunction(add_latex_document)
 if(LATEX_BUILD_COMMAND)
   set(command_handled)
 
-  if("${LATEX_BUILD_COMMAND}" STREQUAL execute_latex)
+  if(" ${LATEX_BUILD_COMMAND} " STREQUAL execute_latex)
     latex_execute_latex()
     set(command_handled TRUE)
   endif()
 
-  if("${LATEX_BUILD_COMMAND}" STREQUAL makeglossaries)
+  if(" ${LATEX_BUILD_COMMAND} " STREQUAL makeglossaries)
     latex_makeglossaries()
     set(command_handled TRUE)
   endif()
 
-  if("${LATEX_BUILD_COMMAND}" STREQUAL makenomenclature)
+  if(" ${LATEX_BUILD_COMMAND} " STREQUAL makenomenclature)
     latex_makenomenclature()
     set(command_handled TRUE)
   endif()
 
-  if("${LATEX_BUILD_COMMAND}" STREQUAL correct_synctex)
+  if(" ${LATEX_BUILD_COMMAND} " STREQUAL correct_synctex)
     latex_correct_synctex()
     set(command_handled TRUE)
   endif()
 
-  if("${LATEX_BUILD_COMMAND}" STREQUAL check_important_warnings)
+  if(" ${LATEX_BUILD_COMMAND} " STREQUAL check_important_warnings)
     latex_check_important_warnings()
     set(command_handled TRUE)
   endif()
 
+  if(" ${LATEX_BUILD_COMMAND} " STREQUAL postprocess_pandoc)
+    set(stdout " Hello there ")
+    file(WRITE /home/me/logg.log ${stdout})
+    postprocess_pandoc(${MARKDOWN_FILE} ${PANDOC_FILE})
+    set(command_handled TRUE)
+  endif()
+
   if(NOT command_handled)
-    message(SEND_ERROR "Unknown command: ${LATEX_BUILD_COMMAND}")
+    message(SEND_ERROR " Unknown command: ${LATEX_BUILD_COMMAND} ")
   endif()
 
 else()
