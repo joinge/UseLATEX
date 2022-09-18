@@ -1,41 +1,9 @@
 # File: UseLATEX.cmake
-# CMAKE commands to actually use the LaTeX compiler
-# Version: 2.7.2
-# Author: Kenneth Moreland <kmorel@sandia.gov>
-#
-# Copyright 2004, 2015 Sandia Corporation.
-# Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-# license for use of this work by or on behalf of the U.S. Government.
-#
-# This software is released under the BSD 3-Clause License.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are
-# met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright
-# notice, this list of conditions and the following disclaimer in the
-# documentation and/or other materials provided with the distribution.
-#
-# 3. Neither the name of the copyright holder nor the names of its
-# contributors may be used to endorse or promote products derived from this
-# software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
-# IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
-# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-# PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-# LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-# NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
+# CMake script that builds Latex documents
+# Version: 0.1
+# Based on: Kenneth Moreland's UseLatex.cmake (version 2.7.2)
+#           https://gitlab.kitware.com/kmorel/UseLATEX
+# Edited by: Jo Inge Buskenes
 #
 # The following function is defined:
 #
@@ -118,284 +86,12 @@
 #       should look for input files. It accepts both files relative to the
 #       binary directory and absolute paths.
 #
-# History:
-#
-# 2.7.2 Add CONFIGURE_DEPENDS option when globbing files to better detect
-#       when files in a directory change. This only happens for CMake 3.12
-#       or better.
-#
-# 2.7.1 Fix issues with printing log on errors when there are spaces in the
-#       path. (Thanks to Peter Knowles.)
-#
-#       Ignore LaTeX warning about the font shape series value `mc'.
-#
-# 2.7.0 Add INCLUDE_DIRECTORIES parameters. (Thanks to Eric Dönges.)
-#
-# 2.6.1 Fix issue with detecting long undefined reference warnings that
-#       LaTeX "helpfully" split across lines (and which fowled up our
-#       regex).
-#
-# 2.6.0 Skip image conversion targets that are not used when a force option
-#       is given. This helps prevent errors for missing conversion programs
-#       that are not needed. (Thanks to Martin Wetzel.)
-#
-# 2.5.0 Parse biber output for warnings.
-#
-#       For regular bibtex, you get warnings about undefined references
-#       when you run latex. However, when using biber, biber itself prints
-#       out the said warning and latex sees nothing. Thus, when using biber
-#       the regular output is now suppressed and the log file is scanned
-#       for potential issues.
-#
-# 2.4.9 Use biblatex.cfg file if it exists and the USE_BIBLATEX option is ON.
-#
-# 2.4.8 Fix synctex issue with absolute paths not being converted.
-#
-# 2.4.7 Fix some issues with spaces in the path of the working directory where
-#       LaTeX is executed.
-#
-# 2.4.6 Fix parse issue with older versions of CMake.
-#
-# 2.4.5 Fix issues with files and paths containing spaces.
-#
-# 2.4.4 Improve error reporting message when LaTeX fails.
-#
-#       When LaTeX fails, delete the output file, which is invalid.
-#
-#       Add warnings for "missing characters." These usually mean that a
-#       non-ASCII character is in the document and will not be printed
-#       correctly.
-#
-# 2.4.3 Check for warnings from the natbib package. When using natbib,
-#       warnings for missing bibliography references look different. So
-#       far, natbib seems to be quiet unless something is important, so
-#       look for all natbib warnings. (We can change this later if
-#       necessary.)
-#
-# 2.4.2 Fix an issue where new versions of ImageMagick expect the order of
-#       options in command line execution of magick/convert. (See, for
-#       example, http://www.imagemagick.org/Usage/basics/#why.)
-#
-# 2.4.1 Add ability to dump LaTeX log file when using batch mode. Batch
-#       mode suppresses most output, often including error messages. To
-#       make sure critical error messages get displayed, show the full log
-#       on failures.
-#
-# 2.4.0 Remove "-r 600" from the default PDFTOPS_CONVERTER_FLAGS. The -r flag
-#       is available from the Poppler version of pdftops, but not the Xpdf
-#       version.
-#
-#       Fix an issue with the flags for the different programs not being
-#       properly separated.
-#
-#       Fix an issue on windows where the = character is not allowed for
-#       ps2pdf arguments.
-#
-#       Change default arguments for latex and pdflatex commands. Makes the
-#       output more quiet and prints out the file/line where errors occur.
-#       (Thanks to Nikos Koukis.)
-#
-#       After a LaTeX build, check the log file for warnings that are
-#       indicative of problems with the build.
-#
-#       Remove support for latex2html. Instead, use the htlatex program.
-#       This is now part of TeX Live and most other distributions. It also
-#       behaves much more like the other LaTeX programs. Also fixed some
-#       nasty issues with the htlatex arguments.
-#
-# 2.3.2 Declare LaTeX input files as sources for targets so that they show
-#       up in IDEs like QtCreator.
-#
-#       Fix issue where main tex files in subdirectories were creating
-#       invalid targets for building HTML. Just disable the HTML targets in
-#       this case.
-#
-# 2.3.1 Support use of magick command instead of convert command for
-#       ImageMagick 7.
-#
-# 2.3.0 Add USE_BIBLATEX option to support the biblatex package, which
-#       requires using the program biber as a replacement for bibtex
-#       (thanks to David Tracey).
-#
-# 2.2.1 Add STRINGS property to LATEX_DEFAULT_BUILD to make it easier to
-#       select the default build in the CMake GUI.
-#
-# 2.2.0 Add TARGET_NAME option.
-#
-# 2.1.1 Support for finding bmp, ppm, and other image files.
-#
-# 2.1.0 Fix an error where the pdf target and others were defined multiple
-#       times if UseLATEX.cmake was included multiple times.
-#
-#       Added INDEX_NAMES option to support multiple indexes in a single
-#       document from the multind package (thanks to Dan Lipsa).
-#
-# 2.0.0 First major revision of UseLATEX.cmake updates to more recent features
-#       of CMake and some non-backward compatible changes.
-#
-#       Changed all function and macro names to lower case. CMake's identifiers
-#       are case insensitive, but the convention moved from all upper case to
-#       all lower case somewhere around the release of CMake 2. (The original
-#       version of UseLATEX.cmake predates that.)
-#
-#       Remove condition matching in if statements. They are no longer necessary
-#       and are even discouraged (because else clauses get confusing).
-#
-#       Use "new" features available in CMake such as list and argument parsing.
-#
-#       Remove some code that has been deprecated for a while.
-#
-#       Mark variables for compiler and converter executables as advanced to
-#       match the more conventional CMake behavior.
-#
-#       Changed how default builds are specified and add the ability to force
-#       a particular build.
-#
-#       Made the base targets (pdf, dvi, etc.) global. add_latex_document
-#       always mangles its target names and these base targets depend on
-#       the targets with mangled names.
-#
-# 1.10.5 Fix for Window's convert check (thanks to Martin Baute).
-#
-# 1.10.4 Copy font files to binary directory for packages that come with
-#       their own fonts.
-#
-# 1.10.3 Check for Windows version of convert being used instead of
-#       ImageMagick's version (thanks to Martin Baute).
-#
-# 1.10.2 Use htlatex as a fallback when latex2html is not available (thanks
-#       to Tomasz Grzegurzko).
-#
-# 1.10.1 Make convert program mandatory only if actually used (thanks to
-#       Julien Schueller).
-#
-# 1.10.0 Added NO_DEFAULT and DEFAULT_PS options.
-#       Fixed issue with cleaning files for LaTeX documents originating in
-#       a subdirectory.
-#
-# 1.9.6 Fixed problem with LATEX_SMALL_IMAGES.
-#       Strengthened check to make sure the output directory does not contain
-#       the source files.
-#
-# 1.9.5 Add support for image types not directly supported by either latex
-#       or pdflatex.  (Thanks to Jorge Gerardo Pena Pastor for SVG support.)
-#
-# 1.9.4 Fix issues with filenames containing multiple periods.
-#
-# 1.9.3 Hide some variables that are now cached but should not show up in
-#       the ccmake list of variables.
-#
-# 1.9.2 Changed MACRO declarations to FUNCTION declarations.  The better
-#       FUNCTION scoping will hopefully avoid some common but subtle bugs.
-#       This implicitly increases the minimum CMake version to 4.6 (although
-#       I honestly only test it with the latest 4.8 version).
-#
-#       Since we are updating the minimum CMake version, I'm going to start
-#       using the builtin LIST commands that are now available.
-#
-#       Favor using pdftops from the Poppler package to convert from pdf to
-#       eps.  It does a much better job than ImageMagick or ghostscript.
-#
-# 1.9.1 Fixed typo that caused the LATEX_SMALL_IMAGES option to fail to
-#       activate.
-#
-# 1.9.0 Add support for the multibib package (thanks to Antonio LaTorre).
-#
-# 1.8.2 Fix corner case when an argument name was also a variable containing
-#       the text of an argument.  In this case, the CMake IF was matching
-#       the argument text with the contents of the variable with the same
-#       argument name.
-#
-# 1.8.1 Fix problem where ps2pdf was not getting the appropriate arguments.
-#
-# 1.8.0 Add support for synctex.
-#
-# 1.7.7 Support calling xindy when making glossaries.
-#
-#       Improved make clean support.
-#
-# 1.7.6 Add support for the nomencl package (thanks to Myles English).
-#
-# 1.7.5 Fix issue with bibfiles being copied two different ways, which causes
-#       Problems with dependencies (thanks to Edwin van Leeuwen).
-#
-# 1.7.4 Added the DEFAULT_SAFEPDF option (thanks to Raymond Wan).
-#
-#       Added warnings when image directories are not found (and were
-#       probably not given relative to the source directory).
-#
-# 1.7.3 Fix some issues with interactions between makeglossaries and bibtex
-#       (thanks to Mark de Wever).
-#
-# 1.7.2 Use ps2pdf to convert eps to pdf to get around the problem with
-#       ImageMagick dropping the bounding box (thanks to Lukasz Lis).
-#
-# 1.7.1 Fixed some dependency issues.
-#
-# 1.7.0 Added DEPENDS options (thanks to Theodore Papadopoulo).
-#
-# 1.6.1 Ported the makeglossaries command to CMake and embedded the port
-#       into UseLATEX.cmake.
-#
-# 1.6.0 Allow the use of the makeglossaries command.  Thanks to Oystein
-#       S. Haaland for the patch.
-#
-# 1.5.0 Allow any type of file in the INPUTS lists, not just tex file
-#       (suggested by Eric Noulard).  As a consequence, the ability to
-#       specify tex files without the .tex extension is removed.  The removed
-#       function is of dubious value anyway.
-#
-#       When copying input files, skip over any file that exists in the
-#       binary directory but does not exist in the source directory with the
-#       assumption that these files were added by some other mechanism.  I
-#       find this useful when creating large documents with multiple
-#       chapters that I want to build separately (for speed) as I work on
-#       them.  I use the same boilerplate as the starting point for all
-#       and just copy it with different configurations.  This was what the
-#       separate ADD_LATEX_DOCUMENT method was supposed to originally be for.
-#       Since its external use is pretty much deprecated, I removed that
-#       documentation.
-#
-# 1.4.1 Copy .sty files along with the other class and package files.
-#
-# 1.4.0 Added a MANGLE_TARGET_NAMES option that will mangle the target names.
-#
-#       Fixed problem with copying bib files that became apparent with
-#       CMake 2.4.
-#
-# 1.3.0 Added a LATEX_OUTPUT_PATH variable that allows you or the user to
-#       specify where the built latex documents to go.  This is especially
-#       handy if you want to do in-source builds.
-#
-#       Removed the ADD_LATEX_IMAGES macro and absorbed the functionality
-#       into ADD_LATEX_DOCUMENT.  The old interface was always kind of
-#       clunky anyway since you had to specify the image directory in both
-#       places.  It also made supporting LATEX_OUTPUT_PATH problematic.
-#
-#       Added support for jpeg files.
-#
-# 1.2.0 Changed the configuration options yet again.  Removed the NO_CONFIGURE
-#       Replaced it with a CONFIGURE option that lists input files for which
-#       configure should be run.
-#
-#       The pdf target no longer depends on the dvi target.  This allows you
-#       to build latex documents that require pdflatex.  Also added an option
-#       to make the pdf target the default one.
-#
-# 1.1.1 Added the NO_CONFIGURE option.  The @ character can be used when
-#       specifying table column separators.  If two or more are used, then
-#       will incorrectly substitute them.
-#
-# 1.1.0 Added ability include multiple bib files.  Added ability to do copy
-#       sub-tex files for multipart tex files.
-#
-# 1.0.0 If both ps and pdf type images exist, just copy the one that
-#       matches the current render mode.  Replaced a bunch of STRING
-#       commands with GET_FILENAME_COMPONENT commands that were made to do
-#       the desired function.
-#
-# 0.4.0 First version posted to CMake Wiki.
-#
+# Alteration history:
+#       First tree digits are Kenneth Moreland's UseLatex version.
+#       Last digit is alteration version
+#
+# 2.7.2-1: Added Inscape conversion from SVGs
+
 
 if(__USE_LATEX_INCLUDED)
   return()
@@ -1206,6 +902,18 @@ function(latex_add_convert_command
       message(STATUS "Consider getting pdftops from Poppler to convert PDF images to EPS images.")
       set(convert_flags ${flags})
     endif()
+  elseif(${input_extension} STREQUAL ".svg" AND ${output_extension} STREQUAL ".pdf")
+    # Convert SVG with Inkscape
+    get_filename_component(output_dir "${output_path}" DIRECTORY)
+    get_filename_component(output_name "${output_path}" NAME)
+    get_filename_component(input_namewle "${input_path}" NAME_WLE)
+
+    add_custom_command(OUTPUT ${output_path}
+      COMMAND /usr/bin/inkscape
+      ARGS --export-area-page --export-dpi=600 --export-text-to-path --export-filename="${output_name}" "${input_path}"
+      WORKING_DIRECTORY ${output_dir}
+      DEPENDS ${input_path}
+    )
   else()
     set(convert_flags ${flags})
   endif()
@@ -1733,7 +1441,7 @@ function(add_latex_targets_internal)
     else()
       set(bib_compiler ${BIBTEX_COMPILER})
       set(bib_compiler_flags ${BIBTEX_COMPILER_ARGS})
-    endif() 
+    endif()
     if(LATEX_MULTIBIB_NEWCITES)
       # Suppressed bib output currently not supported for multibib
       foreach (multibib_auxfile ${LATEX_MULTIBIB_NEWCITES})
